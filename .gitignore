@@ -1,0 +1,9 @@
+.build/
+.build-universal/
+.swiftpm/
+dist/
+.serena/
+*.xcodeproj
+.DS_Store
+*.swp
+*~
