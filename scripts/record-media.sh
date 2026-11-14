@@ -25,7 +25,8 @@ echo "==> Rendering desktop showcase animation..."
 RAW_PATH="$WORK_DIR/showcase.rgba"
 swift "$ROOT_DIR/scripts/render-showcase.swift" \
   --raw-out "$RAW_PATH" \
-  --poster "$ROOT_DIR/docs/assets/showcase.png"
+  --poster "$ROOT_DIR/docs/assets/showcase.png" \
+  --social-preview "$ROOT_DIR/docs/assets/social-preview.png"
 
 ffmpeg -v error -y \
   -f rawvideo -pixel_format rgba -video_size 1920x1080 -framerate 25 -i "$RAW_PATH" \

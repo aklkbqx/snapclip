@@ -173,7 +173,14 @@ func drawSymbol(
         width: targetW,
         height: targetH
     )
-    symbol.draw(in: aligned, from: .zero, operation: .sourceOver, fraction: 1.0)
+    symbol.draw(
+        in: aligned,
+        from: .zero,
+        operation: .sourceOver,
+        fraction: 1.0,
+        respectFlipped: true,
+        hints: nil
+    )
 }
 
 /// Renders the full-size `352x184` UI card scaled cleanly into any destination rectangle,
@@ -512,7 +519,7 @@ func renderFrame(time: Double, config: SceneConfig) -> Data {
     drawMacWindowChrome(
         rect: rightWin,
         radius: 11,
-        title: "Notes  —  PR #14",
+        title: "Notes  •  PR #14",
         bodyColor: NSColor.white,
         titleBarColor: NSColor(calibratedRed: 0.94, green: 0.955, blue: 0.975, alpha: 1),
         borderColor: NSColor(calibratedRed: 0.78, green: 0.82, blue: 0.87, alpha: 1)
@@ -765,6 +772,227 @@ func renderFrame(time: Double, config: SceneConfig) -> Data {
     return Data(bytes: rawPtr, count: pixelW * pixelH * 4)
 }
 
+func renderSocialPreviewFrame() -> Data {
+    let pixelW = 1280
+    let pixelH = 640
+
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: pixelW,
+        pixelsHigh: pixelH,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: pixelW * 4,
+        bitsPerPixel: 32
+    ), let ctx = NSGraphicsContext(bitmapImageRep: rep)?.cgContext else {
+        fatalError("Unable to allocate social preview bitmap context")
+    }
+
+    ctx.translateBy(x: 0, y: CGFloat(pixelH))
+    ctx.scaleBy(x: 1, y: -1)
+
+    let flippedGC = NSGraphicsContext(cgContext: ctx, flipped: true)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = flippedGC
+
+    let canvas = NSRect(x: 0, y: 0, width: CGFloat(pixelW), height: CGFloat(pixelH))
+    let bgGradient = NSGradient(
+        starting: NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.13, alpha: 1),
+        ending: NSColor(calibratedRed: 0.13, green: 0.16, blue: 0.21, alpha: 1)
+    )
+    bgGradient?.draw(in: canvas, angle: 115)
+
+    // Outer frame border inside GitHub OpenGraph safe area
+    drawRoundedRect(
+        canvas.insetBy(dx: 24, dy: 24),
+        radius: 20,
+        fill: NSColor(calibratedRed: 0.09, green: 0.11, blue: 0.14, alpha: 0.55),
+        stroke: NSColor.white.withAlphaComponent(0.10),
+        lineWidth: 1
+    )
+
+    // Left column: clear product value proposition and install command
+    let metaPill = NSRect(x: 68, y: 68, width: 344, height: 30)
+    drawRoundedRect(
+        metaPill,
+        radius: 8,
+        fill: NSColor(calibratedRed: 0.14, green: 0.18, blue: 0.24, alpha: 0.95),
+        stroke: NSColor.white.withAlphaComponent(0.14),
+        lineWidth: 1
+    )
+    drawCenteredText(
+        "macOS 14+   •   MIT License   •   Zero Permissions",
+        in: metaPill,
+        size: 12.5,
+        weight: .medium,
+        color: NSColor(calibratedRed: 0.78, green: 0.84, blue: 0.93, alpha: 1)
+    )
+
+    drawText(
+        "SnapClip",
+        at: NSPoint(x: 68, y: 118),
+        size: 56,
+        weight: .bold,
+        color: .white
+    )
+
+    drawText(
+        "Copy macOS screenshots to the clipboard",
+        at: NSPoint(x: 68, y: 196),
+        size: 24,
+        weight: .medium,
+        color: NSColor(calibratedRed: 0.90, green: 0.93, blue: 0.97, alpha: 1)
+    )
+    drawText(
+        "and Desktop at the same time.",
+        at: NSPoint(x: 68, y: 229),
+        size: 24,
+        weight: .medium,
+        color: NSColor(calibratedRed: 0.90, green: 0.93, blue: 0.97, alpha: 1)
+    )
+
+    let bullets = [
+        "Removes the 5-second macOS thumbnail write delay",
+        "No Screen Recording or Accessibility permissions",
+        "Non-blocking corner card with Trash, Close, and drag-out"
+    ]
+    for (idx, line) in bullets.enumerated() {
+        let rowY = CGFloat(288 + idx * 34)
+        let checkBadge = NSRect(x: 68, y: rowY + 1, width: 20, height: 20)
+        drawRoundedRect(
+            checkBadge,
+            radius: 6,
+            fill: NSColor(calibratedRed: 0.15, green: 0.62, blue: 0.39, alpha: 0.24),
+            stroke: NSColor(calibratedRed: 0.22, green: 0.82, blue: 0.50, alpha: 0.55),
+            lineWidth: 1
+        )
+        drawSymbol(
+            "checkmark",
+            in: checkBadge.insetBy(dx: 4.5, dy: 4.5),
+            color: NSColor(calibratedRed: 0.28, green: 0.90, blue: 0.56, alpha: 1),
+            pointSize: 10,
+            weight: .bold
+        )
+        drawText(
+            line,
+            at: NSPoint(x: 98, y: rowY + 1),
+            size: 15.5,
+            weight: .regular,
+            color: NSColor(calibratedRed: 0.80, green: 0.85, blue: 0.92, alpha: 1)
+        )
+    }
+
+    let termBox = NSRect(x: 68, y: 416, width: 556, height: 92)
+    drawRoundedRect(
+        termBox,
+        radius: 12,
+        fill: NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.09, alpha: 0.96),
+        stroke: NSColor.white.withAlphaComponent(0.15),
+        lineWidth: 1
+    )
+    drawText(
+        "$ brew install aklkbqx/snapclip/snapclip",
+        at: NSPoint(x: termBox.minX + 18, y: termBox.minY + 19),
+        size: 15,
+        weight: .medium,
+        color: NSColor(calibratedRed: 0.42, green: 0.90, blue: 0.62, alpha: 1),
+        monospaced: true
+    )
+    drawText(
+        "$ snapclip install",
+        at: NSPoint(x: termBox.minX + 18, y: termBox.minY + 49),
+        size: 15,
+        weight: .medium,
+        color: NSColor(calibratedRed: 0.90, green: 0.93, blue: 0.98, alpha: 1),
+        monospaced: true
+    )
+
+    drawText(
+        "github.com/aklkbqx/snapclip",
+        at: NSPoint(x: 68, y: 536),
+        size: 14,
+        weight: .medium,
+        color: NSColor(calibratedRed: 0.54, green: 0.60, blue: 0.70, alpha: 1),
+        monospaced: true
+    )
+
+    // Right column: crisp macOS desktop viewport showing Desktop file + Paste + Hover Preview
+    let stage = NSRect(x: 672, y: 68, width: 540, height: 504)
+    NSGraphicsContext.saveGraphicsState()
+    NSBezierPath(roundedRect: stage, xRadius: 16, yRadius: 16).addClip()
+
+    let stageGrad = NSGradient(
+        starting: NSColor(calibratedRed: 0.13, green: 0.16, blue: 0.21, alpha: 1),
+        ending: NSColor(calibratedRed: 0.19, green: 0.23, blue: 0.29, alpha: 1)
+    )
+    stageGrad?.draw(in: stage, angle: 90)
+
+    let stageMenu = NSRect(x: stage.minX, y: stage.minY, width: stage.width, height: 28)
+    NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.10, alpha: 0.92).setFill()
+    stageMenu.fill()
+    drawText("SnapClip", at: NSPoint(x: stage.minX + 16, y: stage.minY + 6), size: 12, weight: .semibold, color: .white)
+    drawText("Cmd+Shift+4", at: NSPoint(x: stage.maxX - 96, y: stage.minY + 6.5), size: 11, weight: .medium, color: NSColor.white.withAlphaComponent(0.75), monospaced: true)
+
+    // Editor window showing pasted PNG + TIFF
+    let editorWin = NSRect(x: stage.minX + 24, y: stage.minY + 52, width: 344, height: 274)
+    drawMacWindowChrome(
+        rect: editorWin,
+        radius: 11,
+        title: "Pull Request #14",
+        bodyColor: .white,
+        titleBarColor: NSColor(calibratedRed: 0.94, green: 0.955, blue: 0.975, alpha: 1),
+        borderColor: NSColor(calibratedRed: 0.78, green: 0.82, blue: 0.87, alpha: 1)
+    )
+    let pastedSnap = NSRect(x: editorWin.minX + 18, y: editorWin.minY + 50, width: 308, height: 160)
+    drawRoundedRect(
+        pastedSnap,
+        radius: 8,
+        fill: .white,
+        stroke: NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1),
+        lineWidth: 1
+    )
+    drawScaledCaptureSnapshot(in: pastedSnap.insetBy(dx: 2, dy: 2), cornerRadius: 6)
+    drawText(
+        "Pasted from clipboard (PNG + TIFF)",
+        at: NSPoint(x: editorWin.minX + 18, y: pastedSnap.maxY + 12),
+        size: 11.5,
+        weight: .semibold,
+        color: NSColor(calibratedRed: 0.13, green: 0.56, blue: 0.34, alpha: 1)
+    )
+
+    // Saved Desktop icon top-right
+    let iconBox = NSRect(x: stage.maxX - 124, y: stage.minY + 58, width: 96, height: 54)
+    drawRoundedRect(
+        iconBox,
+        radius: 6,
+        fill: NSColor.white.withAlphaComponent(0.96),
+        stroke: NSColor.white.withAlphaComponent(0.80),
+        lineWidth: 1.5
+    )
+    drawScaledCaptureSnapshot(in: iconBox.insetBy(dx: 2.5, dy: 2.5), cornerRadius: 4)
+    let iconLabel = NSRect(x: stage.maxX - 134, y: iconBox.maxY + 7, width: 116, height: 20)
+    drawRoundedRect(iconLabel, radius: 5, fill: NSColor(calibratedWhite: 0.07, alpha: 0.78))
+    drawCenteredText("Screenshot.png", in: iconLabel, size: 10.5, weight: .medium, color: .white)
+
+    // Floating corner preview card with hover Trash + Close visible
+    let previewRect = NSRect(x: stage.maxX - 266, y: stage.maxY - 178, width: 242, height: 154)
+    drawSnapClipPreviewCard(frame: previewRect, hoverProgress: 1.0, cardAlpha: 1.0)
+    drawArrowCursor(at: NSPoint(x: previewRect.maxX - 41, y: previewRect.minY + 26))
+
+    NSGraphicsContext.restoreGraphicsState()
+    drawRoundedRect(stage, radius: 16, fill: nil, stroke: NSColor.white.withAlphaComponent(0.16), lineWidth: 1)
+
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let rawPtr = rep.bitmapData else {
+        fatalError("Missing social preview bitmapData")
+    }
+    return Data(bytes: rawPtr, count: pixelW * pixelH * 4)
+}
+
 func writePosterPNG(frameData: Data, width: Int, height: Int, to url: URL) throws {
     let bytes = [UInt8](frameData)
     let provider = CGDataProvider(data: Data(bytes) as CFData)!
@@ -790,6 +1018,7 @@ func writePosterPNG(frameData: Data, width: Int, height: Int, to url: URL) throw
 
 let args = Array(CommandLine.arguments.dropFirst())
 var posterPath: String?
+var socialPreviewPath: String?
 var rawOutputPath: String?
 var keyframeDir: String?
 var index = 0
@@ -798,6 +1027,9 @@ while index < args.count {
     case "--poster":
         index += 1
         if index < args.count { posterPath = args[index] }
+    case "--social-preview":
+        index += 1
+        if index < args.count { socialPreviewPath = args[index] }
     case "--raw-out":
         index += 1
         if index < args.count { rawOutputPath = args[index] }
@@ -808,6 +1040,11 @@ while index < args.count {
         break
     }
     index += 1
+}
+
+if let socialPreviewPath {
+    let socialBytes = renderSocialPreviewFrame()
+    try writePosterPNG(frameData: socialBytes, width: 1280, height: 640, to: URL(fileURLWithPath: socialPreviewPath))
 }
 
 let config = SceneConfig()

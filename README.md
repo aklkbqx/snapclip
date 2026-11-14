@@ -2,9 +2,10 @@
 
 # SnapClip
 
-### Copy macOS screenshots to the clipboard, Desktop, and a floating preview at the same time
+### Copy macOS screenshots to the clipboard, save to Desktop, and skip the 5-second thumbnail delay
 
 [![Release](https://img.shields.io/github/v/release/aklkbqx/snapclip?color=FF891A&label=Release&style=flat-square)](https://github.com/aklkbqx/snapclip/releases)
+[![Homebrew](https://img.shields.io/badge/Homebrew-aklkbqx%2Fsnapclip-FBB040?style=flat-square&logo=homebrew&logoColor=white)](#homebrew)
 [![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-EA4AAA?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/aklkbqx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-34C759.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%2014%2B-blue?style=flat-square&logo=apple&logoColor=white)](https://github.com/aklkbqx/snapclip/releases)
@@ -13,41 +14,54 @@
 <br/>
 
 <a href="#how-it-works">
-  <img src="docs/assets/showcase.gif" alt="SnapClip capturing a screenshot, saving to Desktop, pasting via Cmd+V, and showing the hoverable corner preview card" width="800" />
+  <img src="docs/assets/showcase.gif" alt="SnapClip copying a Cmd+Shift+4 macOS screenshot to the clipboard, saving the PNG to Desktop immediately, pasting via Cmd+V, and showing a floating corner preview card with Trash and Close hover buttons" width="800" />
 </a>
 
 <p>
   <a href="#why-it-exists">Why it exists</a> ·
+  <a href="#stock-macos-vs-snapclip">Comparison</a> ·
   <a href="#install">Install</a> ·
   <a href="#commands">Commands</a> ·
   <a href="#preview-controls">Preview controls</a> ·
   <a href="#configuration">Configuration</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#faq">FAQ</a> ·
   <a href="#support">Support</a>
 </p>
 
 </div>
 
-Requires no Screen Recording or Accessibility permissions. `snapclip` runs as a background user agent that watches the staging folder where macOS `screencapture` already writes image files.
+SnapClip is an open-source macOS background utility written in Swift that lets `Cmd+Shift+3`, `Cmd+Shift+4`, and `Cmd+Shift+5` copy screenshots to your clipboard and save the image file to `~/Desktop` at the same time. Because it watches the staging folder where macOS `screencapture` already writes files, SnapClip requires **no Screen Recording or Accessibility permissions**.
 
 ```text
-  Cmd+Shift+3 / 4 --> ~/.local/state/snapclip/staging --+--> clipboard (PNG + TIFF)
-                                                        +--> ~/Desktop/Screenshot ...png
-                                                        +--> corner preview on cursor display
+  Cmd+Shift+3 / 4 / 5 --> ~/.local/state/snapclip/staging --+--> clipboard (PNG + TIFF)
+                                                            +--> ~/Desktop/Screenshot ...png
+                                                            +--> corner preview on cursor display
 ```
 
 ## Why it exists
 
-macOS `screencapture` forces a trade-off between speed and keeping files:
+Stock macOS `screencapture` forces a choice between pasting fast and keeping files:
 
-- Setting `target` to `clipboard` skips writing the screenshot file.
-- Keeping the native macOS thumbnail enabled delays writing the file for ~5 seconds until the thumbnail dismisses.
+- Pressing `Cmd+Shift+4` saves a file to Desktop, does **not** copy it to the clipboard, and holds the file in memory for ~5 seconds while the native corner thumbnail stays on screen.
+- Pressing `Cmd+Ctrl+Shift+4` (or setting `target` to `clipboard`) copies to the clipboard, skips saving the file, and shows no corner preview for drag-and-drop.
 
-`snapclip install` backs up your current `com.apple.screencapture` defaults, disables the 5-second thumbnail delay (`show-thumbnail = 0`), points screenshots to a staging folder, and starts the watcher. `snapclip uninstall` stops the agent and restores your original `screencapture` preferences.
+`snapclip install` backs up your existing `com.apple.screencapture` preferences, disables the 5-second native thumbnail write delay (`show-thumbnail = 0`), points screenshots at a local staging directory, and loads a lightweight `LaunchAgent` (`com.snapclip.agent`). Every capture is copied onto your clipboard, moved to `~/Desktop`, and shown in a non-blocking corner card right away. `snapclip uninstall` unloads the agent and restores your original macOS settings.
+
+## Stock macOS vs. SnapClip
+
+| Capability | Stock `Cmd+Shift+4` (`target=file`) | Stock `Cmd+Ctrl+Shift+4` (`target=clipboard`) | SnapClip |
+| --- | --- | --- | --- |
+| Copies PNG + TIFF to clipboard | No | Yes | Yes, immediately |
+| Saves image file to `~/Desktop` | Delayed ~5s while thumbnail is visible | No | Yes, immediately (or optional clipboard-only mode) |
+| Floating corner preview | Blocks file write until dismissed | None | Non-blocking card on the display holding your cursor |
+| Drag-and-drop file from preview | Yes | No | Yes |
+| Hover Trash & Close buttons | Right-click menu only | No | One-click Move to Trash (`trash`) and Close (`xmark`) |
+| Screen Recording / Accessibility TCC | Built into macOS | Built into macOS | **None required** |
 
 ## Install
 
-Requires macOS 14 or newer.
+Requires macOS 14 (Sonoma) or newer on Apple Silicon (`arm64`) or Intel (`x86_64`).
 
 ### Homebrew
 
@@ -59,7 +73,7 @@ snapclip doctor
 
 ### Release archive
 
-Download `snapclip_<version>_darwin_universal.tar.gz` and `SHA256SUMS` from [Releases](https://github.com/aklkbqx/snapclip/releases/latest), verify the checksum, and install the binary onto your `PATH`:
+Download `snapclip_<version>_darwin_universal.tar.gz` and `SHA256SUMS` from [GitHub Releases](https://github.com/aklkbqx/snapclip/releases/latest), verify the checksum, and place `snapclip` on your `PATH`:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
@@ -70,7 +84,7 @@ snapclip install
 
 ### Build from source
 
-Requires Swift 6.0+ (no external Swift packages):
+Requires Swift 6.0+ (zero external Swift package dependencies):
 
 ```sh
 git clone https://github.com/aklkbqx/snapclip.git
@@ -79,14 +93,16 @@ make verify
 make install
 ```
 
-Add `~/.local/bin` to your `PATH` if needed, then configure the LaunchAgent and staging preferences:
+Add `~/.local/bin` to your `PATH` if needed, then enable the `LaunchAgent` and staging preferences:
 
 ```sh
 snapclip install
 snapclip doctor
 ```
 
-To restore everything back to stock macOS behavior:
+### Uninstall
+
+To stop the background agent and restore your backed-up `com.apple.screencapture` preferences back to stock macOS behavior:
 
 ```sh
 snapclip uninstall
@@ -96,27 +112,27 @@ snapclip uninstall
 
 | Command | What it does |
 | --- | --- |
-| `snapclip run [--config <path>] [--clipboard-only] [--no-preview]` | Run the foreground watcher (used by `launchd`) |
-| `snapclip install [--no-load] [--migrate-agent <label>]` | Back up defaults, apply staging config, and load `LaunchAgent` |
+| `snapclip run [--config <path>] [--clipboard-only] [--no-preview]` | Run the foreground watcher (invoked by `launchd`) |
+| `snapclip install [--no-load] [--migrate-agent <label>]` | Back up `screencapture` defaults, apply staging config, and load `LaunchAgent` |
 | `snapclip uninstall` | Unload `LaunchAgent` and restore backed-up `screencapture` settings |
-| `snapclip status [--json]` | Print daemon status, staging queue count, and destination path |
-| `snapclip doctor [--json] [--conflict-agent <label>]` | Verify binary, folders, defaults keys, and agent state |
-| `snapclip config [show\|init\|path]` | Print active config, write defaults, or print config file path |
+| `snapclip status [--json]` | Print daemon health, staging queue count, and destination path |
+| `snapclip doctor [--json] [--conflict-agent <label>]` | Verify binary, directories, `screencapture` defaults, and `launchd` state |
+| `snapclip config [show\|init\|path]` | Print active config, write defaults, or print the config file path |
 | `snapclip donate [github] [--open] [--json]` | Print the GitHub Sponsors URL, or open it in your browser |
-| `snapclip version` | Print version |
+| `snapclip version` | Print the installed version |
 
 <p align="center">
-  <img src="docs/assets/cli.gif" alt="snapclip version, config show, and donate in a terminal" width="750" />
+  <img src="docs/assets/cli.gif" alt="Terminal recording of snapclip version, snapclip config show, and snapclip donate" width="750" />
 </p>
 
 ## Preview controls
 
-The floating card appears in the bottom-right corner of the monitor holding the mouse cursor and stays out of focus so typing is never interrupted.
+The floating card appears in the bottom-right corner of whichever monitor currently holds your mouse cursor and never steals window focus while you type.
 
-- **Click**: open the saved file in Preview (in `--clipboard-only` mode where no file is kept, clicking dismisses).
-- **Drag left or up**: drop the screenshot into another app, Finder, or terminal.
-- **Hover top-right buttons**: move to macOS Trash (`trash`) or close (`xmark`).
-- **Swipe right or right-click**: dismiss the preview without touching the saved file.
+- **Click**: open the saved screenshot in Preview (in `--clipboard-only` mode where no file is kept, clicking dismisses the card).
+- **Drag left or up**: drag the image file straight into a browser, Slack, Finder, PR comment, or terminal.
+- **Hover top-right buttons**: move the saved screenshot to macOS Trash (`trash`) or close the preview (`xmark`).
+- **Swipe right or right-click**: dismiss the card without deleting the saved file.
 
 ## Configuration
 
@@ -146,13 +162,30 @@ Default values:
 
 ## How it works
 
-`SnapClipCore` monitors the staging directory using kernel vnode events (`O_EVTONLY`), sorts pending captures oldest-first, processes them serially to preserve clipboard order, waits asynchronously for image trailers and stable byte counts via `ImageIO`, writes PNG plus LZW-compressed TIFF onto a single `NSPasteboardItem`, and moves the file cleanly into `destinationDirectory`.
+`SnapClipCore` opens the staging directory with kernel vnode notifications (`O_EVTONLY`), sorts pending captures oldest-first so rapid bursts keep chronological order, waits asynchronously for valid image trailers and stable byte counts via `ImageIO`, writes PNG plus LZW-compressed TIFF onto a single `NSPasteboardItem`, and moves the finalized file into `destinationDirectory` (with automatic numbered collision suffixes if a filename already exists).
 
-New behaviors can attach to the pipeline through `CapturePostProcessor` and `CaptureActionSink` without modifying the directory watcher.
+Custom workflows can attach through the `CapturePostProcessor` and `CaptureActionSink` protocols without modifying the directory watcher.
+
+## FAQ
+
+### How does SnapClip capture screenshots without Screen Recording permission?
+SnapClip does not capture your screen or intercept keyboard shortcuts. macOS's built-in `screencapture` process still takes the screenshot and writes it to `~/.local/state/snapclip/staging`. SnapClip only watches that directory and processes completed files.
+
+### Why does stock macOS wait 5 seconds before saving screenshots to Desktop?
+When `com.apple.screencapture` has `show-thumbnail` enabled, macOS delays writing the screenshot to its final folder until the floating thumbnail auto-dismisses. `snapclip install` sets `show-thumbnail = 0` so macOS flushes the file immediately, while SnapClip renders its own non-blocking corner preview after the file and clipboard are already ready.
+
+### Does SnapClip work with non-English macOS languages and screen recordings?
+Yes. SnapClip matches files in the staging directory by media extension (`png`, `jpg`, `jpeg`, `heic`, `tiff`, `tif`, `webp`, and `mov` / `mp4` when `watchScreenRecordings` is `true`) rather than English filename prefixes, so localized macOS filenames work out of the box. Screen recordings are moved cleanly to `destinationDirectory` once recording finishes without overwriting your image clipboard.
+
+### Can I copy screenshots to the clipboard without keeping files on Desktop?
+Yes. Set `"keepFile": false` in `~/.config/snapclip/config.json` (or pass `--clipboard-only` to `snapclip run`). SnapClip will copy each screenshot to the clipboard, show the corner preview if enabled, and remove the staged file instead of saving it to `~/Desktop`.
+
+### What happens if I uninstall SnapClip?
+Running `snapclip uninstall` unloads `com.snapclip.agent`, deletes its `LaunchAgent` plist, and restores your original `com.apple.screencapture` keys from `~/.local/state/snapclip/backup-defaults.json`.
 
 ## Packaging
 
-Build a universal macOS (`arm64` + `x86_64`) release tarball, `SHA256SUMS`, and Homebrew formula under `dist/packages/`:
+Build a universal macOS (`arm64` + `x86_64`) release archive, `SHA256SUMS`, and Homebrew formula under `dist/packages/`:
 
 ```sh
 make package
@@ -160,7 +193,7 @@ make package
 
 ## Security and privacy
 
-SnapClip opens no network sockets, makes no outbound HTTP requests during capture watching, and collects no telemetry. See [SECURITY.md](SECURITY.md).
+SnapClip opens no network sockets, makes no background HTTP requests while watching captures, and collects no telemetry. All files stay in your user directories. See [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
@@ -168,7 +201,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT
 
 ## Support
 
-SnapClip is free and open-source software under the MIT License. If it saves you time capturing and sharing screenshots, you can support ongoing development via [GitHub Sponsors](https://github.com/sponsors/aklkbqx):
+SnapClip is free and open-source software under the MIT License. If it saves you time capturing and sharing screenshots on macOS, you can support ongoing development via [GitHub Sponsors](https://github.com/sponsors/aklkbqx):
 
 ```sh
 # Print the GitHub Sponsors URL
