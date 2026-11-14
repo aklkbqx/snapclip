@@ -3,7 +3,7 @@ BINDIR ?= $(PREFIX)/bin
 CODESIGN_CMD := codesign --force --sign - --identifier com.aklkbqx.snapclip
 VERSION ?= $(shell sed -n 's/.*static let current = "\([^"]*\)".*/\1/p' Sources/SnapClipCLI/SnapClipCLI.swift)
 
-.PHONY: test build install verify package publish-homebrew-tap clean
+.PHONY: test build install verify package publish-homebrew-tap media clean
 
 test:
 	swift test
@@ -27,6 +27,9 @@ package:
 
 publish-homebrew-tap:
 	sh scripts/update-homebrew-tap.sh "$(VERSION)" "dist/packages/$(VERSION)" --publish
+
+media:
+	sh scripts/record-media.sh
 
 clean:
 	swift package clean

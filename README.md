@@ -10,6 +10,12 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%2014%2B-blue?style=flat-square&logo=apple&logoColor=white)](https://github.com/aklkbqx/snapclip/releases)
 [![Arch](https://img.shields.io/badge/Arch-arm64%20%7C%20x86__64-orange?style=flat-square)](https://github.com/aklkbqx/snapclip/releases)
 
+<br/>
+
+<a href="#how-it-works">
+  <img src="docs/assets/showcase.gif" alt="SnapClip capturing a screenshot, saving to Desktop, pasting via Cmd+V, and showing the hoverable corner preview card" width="800" />
+</a>
+
 <p>
   <a href="#why-it-exists">Why it exists</a> ·
   <a href="#install">Install</a> ·
@@ -98,6 +104,10 @@ snapclip uninstall
 | `snapclip config [show\|init\|path]` | Print active config, write defaults, or print config file path |
 | `snapclip donate [github] [--open] [--json]` | Print the GitHub Sponsors URL, or open it in your browser |
 | `snapclip version` | Print version |
+
+<p align="center">
+  <img src="docs/assets/cli.gif" alt="snapclip version, config show, and donate in a terminal" width="750" />
+</p>
 
 ## Preview controls
 
