@@ -2,6 +2,7 @@
 .build-universal/
 .swiftpm/
 dist/
+promo/
 .serena/
 *.xcodeproj
 .DS_Store
