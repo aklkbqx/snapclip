@@ -21,7 +21,7 @@ import pathlib, re, sys
 root = pathlib.Path(".")
 errors = []
 
-skip_dirs = {".build", ".build-universal", ".git", ".swiftpm", "dist"}
+skip_dirs = {".build", ".build-universal", ".git", ".swiftpm", "dist", "site", "promo"}
 files = [
     p for p in sorted(root.rglob("*"))
     if p.is_file()
