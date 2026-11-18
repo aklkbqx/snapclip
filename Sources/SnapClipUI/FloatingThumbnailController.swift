@@ -19,11 +19,38 @@ public final class FloatingThumbnailController: PreviewPresenting {
         hoverDismissSeconds: Double,
         onTrashRequested: @escaping @Sendable (URL) -> Bool
     ) async {
+        await showMediaPreview(
+            imageData: imageData,
+            fileURL: fileURL,
+            mediaKind: .image,
+            autoDismissSeconds: autoDismissSeconds,
+            hoverDismissSeconds: hoverDismissSeconds,
+            onTrashRequested: onTrashRequested
+        )
+    }
+
+    nonisolated public func showMediaPreview(
+        imageData: Data?,
+        fileURL: URL?,
+        mediaKind: PreviewMediaKind,
+        autoDismissSeconds: Double,
+        hoverDismissSeconds: Double,
+        onTrashRequested: @escaping @Sendable (URL) -> Bool
+    ) async {
         await MainActor.run {
-            guard let image = NSImage(data: imageData) else { return }
+            let resolvedImage: NSImage?
+            if let imageData, let decoded = NSImage(data: imageData) {
+                resolvedImage = decoded
+            } else if case .video = mediaKind {
+                resolvedImage = Self.makeVideoFallbackImage()
+            } else {
+                resolvedImage = nil
+            }
+            guard let image = resolvedImage else { return }
             self.show(
                 image: image,
                 fileURL: fileURL,
+                mediaKind: mediaKind,
                 autoDismissSeconds: autoDismissSeconds,
                 hoverDismissSeconds: hoverDismissSeconds,
                 onTrashRequested: onTrashRequested
@@ -34,6 +61,7 @@ public final class FloatingThumbnailController: PreviewPresenting {
     public func show(
         image: NSImage,
         fileURL: URL?,
+        mediaKind: PreviewMediaKind = .image,
         autoDismissSeconds: Double = 4.5,
         hoverDismissSeconds: Double = 2.5,
         onTrashRequested: @escaping @Sendable (URL) -> Bool = { _ in false }
@@ -94,6 +122,7 @@ public final class FloatingThumbnailController: PreviewPresenting {
             frame: NSRect(origin: .zero, size: targetFrame.size),
             image: image,
             fileURL: fileURL,
+            mediaKind: mediaKind,
             onClick: { [weak self] in
                 self?.openInPreview()
             },
@@ -172,5 +201,27 @@ public final class FloatingThumbnailController: PreviewPresenting {
         dismissTimer = nil
         panel?.orderOut(nil)
         panel = nil
+    }
+
+    private static func makeVideoFallbackImage() -> NSImage {
+        let size = NSSize(width: 204, height: 128)
+        return NSImage(size: size, flipped: false) { rect in
+            NSColor(calibratedWhite: 0.14, alpha: 1.0).setFill()
+            rect.fill()
+            if let sym = NSImage(systemSymbolName: "video.fill", accessibilityDescription: "Screen Recording") {
+                let config = NSImage.SymbolConfiguration(pointSize: 34, weight: .medium)
+                    .applying(.init(paletteColors: [.white]))
+                let styled = sym.withSymbolConfiguration(config) ?? sym
+                let symSize = styled.size
+                let drawRect = NSRect(
+                    x: (rect.width - symSize.width) / 2,
+                    y: (rect.height - symSize.height) / 2,
+                    width: symSize.width,
+                    height: symSize.height
+                )
+                styled.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 0.45)
+            }
+            return true
+        }
     }
 }

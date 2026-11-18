@@ -18,6 +18,7 @@ final class MockPasteboardWriter: PasteboardWriting, @unchecked Sendable {
 final class MockPreviewPresenter: PreviewPresenting, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var shownURLs: [URL?] = []
+    private(set) var shownEntries: [(url: URL?, kind: PreviewMediaKind, hasImageData: Bool)] = []
 
     func showPreview(
         imageData: Data,
@@ -26,8 +27,27 @@ final class MockPreviewPresenter: PreviewPresenting, @unchecked Sendable {
         hoverDismissSeconds: Double,
         onTrashRequested: @escaping @Sendable (URL) -> Bool
     ) async {
+        await showMediaPreview(
+            imageData: imageData,
+            fileURL: fileURL,
+            mediaKind: .image,
+            autoDismissSeconds: autoDismissSeconds,
+            hoverDismissSeconds: hoverDismissSeconds,
+            onTrashRequested: onTrashRequested
+        )
+    }
+
+    func showMediaPreview(
+        imageData: Data?,
+        fileURL: URL?,
+        mediaKind: PreviewMediaKind,
+        autoDismissSeconds: Double,
+        hoverDismissSeconds: Double,
+        onTrashRequested: @escaping @Sendable (URL) -> Bool
+    ) async {
         lock.withLock {
             shownURLs.append(fileURL)
+            shownEntries.append((fileURL, mediaKind, !(imageData?.isEmpty ?? true)))
         }
     }
 }
@@ -305,5 +325,143 @@ struct PipelineIntegrationTests {
         #expect(FileManager.default.fileExists(atPath: failedURL.path))
         #expect(!FileManager.default.fileExists(atPath: stagingURL.appendingPathComponent("broken.png").path))
         #expect(pasteboard.writes.isEmpty)
+    }
+
+    @Test("CaptureWatcher moves finalized screen recording, shows video preview, and leaves pasteboard untouched")
+    func watcherProcessesFinalizedScreenRecordingWithPreview() async throws {
+        let home = try TestFixtures.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let config = SnapClipConfig(
+            stagingDirectory: "~/staging",
+            destinationDirectory: "~/dest",
+            stateDirectory: "~/state",
+            logPath: "~/logs/snapclip.log",
+            keepFile: true,
+            showFloatingPreview: true
+        )
+        let stagingURL = config.stagingURL(homeDirectory: home.path)
+        let destURL = config.destinationURL(homeDirectory: home.path)
+        try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: true)
+
+        let movURL = stagingURL.appendingPathComponent("Screen Recording Test.mov")
+        try await TestFixtures.makeValidMOVFile(at: movURL, durationSeconds: 0.3)
+
+        let pasteboard = MockPasteboardWriter()
+        let preview = MockPreviewPresenter()
+        let defaults = InMemoryDefaultsStore(initial: [
+            "location-screenshot": stagingURL.path,
+            "location-screenrecording": stagingURL.path
+        ])
+        let pipeline = SnapClipPipeline(
+            config: config,
+            pasteboardWriter: pasteboard,
+            previewPresenter: preview,
+            logger: TestLogger()
+        )
+        let watcher = CaptureWatcher(
+            config: config,
+            homeDirectory: home.path,
+            pipeline: pipeline,
+            stabilityReader: StabilityReader(
+                retryDelaysMilliseconds: [10],
+                stabilityProbeMilliseconds: 10,
+                videoProbeMilliseconds: 10,
+                activeVideoGraceSeconds: 0,
+                isActiveCaptureRunning: { false }
+            ),
+            defaultsStore: defaults,
+            logger: TestLogger()
+        )
+
+        try watcher.start()
+        defer { watcher.stop() }
+
+        for _ in 0..<40 {
+            if preview.shownEntries.count == 1 &&
+                FileManager.default.fileExists(atPath: destURL.appendingPathComponent("Screen Recording Test.mov").path) {
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        #expect(pasteboard.writes.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: movURL.path))
+        #expect(FileManager.default.fileExists(atPath: destURL.appendingPathComponent("Screen Recording Test.mov").path))
+        #expect(preview.shownEntries.count == 1)
+        #expect(preview.shownEntries.first?.hasImageData == true)
+        if case .video(let duration) = preview.shownEntries.first?.kind {
+            #expect((duration ?? 0) > 0.1)
+        } else {
+            Issue.record("Expected video preview media kind")
+        }
+    }
+
+    @Test("CaptureWatcher keeps active screen recording in staging without quarantining and still processes concurrent screenshots")
+    func watcherDoesNotQuarantineActiveRecording() async throws {
+        let home = try TestFixtures.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let config = SnapClipConfig(
+            stagingDirectory: "~/staging",
+            destinationDirectory: "~/dest",
+            stateDirectory: "~/state",
+            logPath: "~/logs/snapclip.log",
+            keepFile: true,
+            showFloatingPreview: true
+        )
+        let stagingURL = config.stagingURL(homeDirectory: home.path)
+        let destURL = config.destinationURL(homeDirectory: home.path)
+        let failedDir = config.stateURL(homeDirectory: home.path).appendingPathComponent("failed")
+        try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: true)
+
+        // Simulate an active recording file before moov is finalized.
+        let activeMov = stagingURL.appendingPathComponent("Active Recording.mov")
+        try Data(repeating: 0x01, count: 64).write(to: activeMov)
+        let png = TestFixtures.makeValidPNGData(width: 32, height: 24)
+        try png.write(to: stagingURL.appendingPathComponent("MidRecordingShot.png"))
+
+        let pasteboard = MockPasteboardWriter()
+        let preview = MockPreviewPresenter()
+        let pipeline = SnapClipPipeline(
+            config: config,
+            pasteboardWriter: pasteboard,
+            previewPresenter: preview,
+            logger: TestLogger()
+        )
+        let watcher = CaptureWatcher(
+            config: config,
+            homeDirectory: home.path,
+            pipeline: pipeline,
+            stabilityReader: StabilityReader(
+                retryDelaysMilliseconds: [10],
+                stabilityProbeMilliseconds: 10,
+                videoProbeMilliseconds: 10,
+                activeVideoGraceSeconds: 0,
+                isActiveCaptureRunning: { true }
+            ),
+            defaultsStore: InMemoryDefaultsStore(initial: [
+                "location-screenshot": stagingURL.path,
+                "location-screenrecording": stagingURL.path
+            ]),
+            logger: TestLogger(),
+            maxFailureCycles: 1
+        )
+
+        try watcher.start()
+        defer { watcher.stop() }
+
+        for _ in 0..<40 {
+            if pasteboard.writes.count == 1 &&
+                FileManager.default.fileExists(atPath: destURL.appendingPathComponent("MidRecordingShot.png").path) {
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        #expect(pasteboard.writes.count == 1)
+        #expect(FileManager.default.fileExists(atPath: destURL.appendingPathComponent("MidRecordingShot.png").path))
+        #expect(FileManager.default.fileExists(atPath: activeMov.path))
+        #expect(!FileManager.default.fileExists(atPath: failedDir.appendingPathComponent("Active Recording.mov").path))
     }
 }

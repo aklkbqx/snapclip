@@ -50,6 +50,6 @@ Every key is optional; omitted keys use these defaults:
 | `showFloatingPreview` | Show the corner preview card |
 | `previewAutoDismissSeconds` / `previewHoverDismissSeconds` | How long the card stays, and how long after the pointer leaves it (minimum 0.5) |
 | `includeTiffOnPasteboard` | Also put a TIFF copy on the clipboard next to the PNG |
-| `watchScreenRecordings` | Also move `mov` / `mp4` screen recordings to the destination folder (the clipboard is left alone) |
+| `watchScreenRecordings` | Route `Cmd+Shift+5` `.mov` / `.mp4` screen recordings to the destination folder and show a corner preview card (the clipboard is left alone) |
 | `stagingDirectory` | The folder macOS writes captures to before SnapClip handles them |
 | `stateDirectory`, `logPath`, `maxLogSizeBytes` | Internal state, log file, and log size limit (minimum 16384) |

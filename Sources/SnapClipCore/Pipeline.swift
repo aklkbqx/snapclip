@@ -12,7 +12,7 @@ public protocol CaptureActionSink: Sendable {
     func handle(_ artifact: CapturedArtifact, destinationURL: URL?) async
 }
 
-/// UI presentation bridge invoked once an image has been copied and placed on disk.
+/// UI presentation bridge invoked once an image or screen recording is placed on disk.
 public protocol PreviewPresenting: Sendable {
     func showPreview(
         imageData: Data,
@@ -21,6 +21,35 @@ public protocol PreviewPresenting: Sendable {
         hoverDismissSeconds: Double,
         onTrashRequested: @escaping @Sendable (URL) -> Bool
     ) async
+
+    func showMediaPreview(
+        imageData: Data?,
+        fileURL: URL?,
+        mediaKind: PreviewMediaKind,
+        autoDismissSeconds: Double,
+        hoverDismissSeconds: Double,
+        onTrashRequested: @escaping @Sendable (URL) -> Bool
+    ) async
+}
+
+public extension PreviewPresenting {
+    func showMediaPreview(
+        imageData: Data?,
+        fileURL: URL?,
+        mediaKind: PreviewMediaKind,
+        autoDismissSeconds: Double,
+        hoverDismissSeconds: Double,
+        onTrashRequested: @escaping @Sendable (URL) -> Bool
+    ) async {
+        guard let imageData else { return }
+        await showPreview(
+            imageData: imageData,
+            fileURL: fileURL,
+            autoDismissSeconds: autoDismissSeconds,
+            hoverDismissSeconds: hoverDismissSeconds,
+            onTrashRequested: onTrashRequested
+        )
+    }
 }
 
 /// Coordinates post-processors, pasteboard copy, destination persistence, preview UI, and custom sinks.
@@ -100,23 +129,13 @@ public final class SnapClipPipeline: Sendable {
 
         var shownPath: String?
         if config.showFloatingPreview, let presenter = previewPresenter {
-            let store = destinationStore
-            let log = logger
-            await presenter.showPreview(
+            await presenter.showMediaPreview(
                 imageData: artifact.data,
                 fileURL: finalURL,
+                mediaKind: .image,
                 autoDismissSeconds: config.previewAutoDismissSeconds,
                 hoverDismissSeconds: config.previewHoverDismissSeconds,
-                onTrashRequested: { url in
-                    do {
-                        try store.trashFile(at: url)
-                        log.log("trashed screenshot from floating preview: \(url.lastPathComponent)")
-                        return true
-                    } catch {
-                        log.log("failed to trash screenshot \(url.lastPathComponent): \(error.localizedDescription)")
-                        return false
-                    }
-                }
+                onTrashRequested: makeTrashHandler(kindLabel: "screenshot")
             )
             shownPath = finalURL?.path ?? artifact.sourceURL.path
         }
@@ -134,5 +153,49 @@ public final class SnapClipPipeline: Sendable {
             artifact.sha256,
             shownPath
         )
+    }
+
+    /// Moves a finalized screen recording to `destinationDirectory` without altering the clipboard and shows its corner preview.
+    public func runVideoPipeline(
+        _ artifact: CapturedVideoArtifact,
+        destinationDirectory: URL
+    ) async -> CaptureProcessingResult {
+        // Screen recordings are always persisted to disk because the pasteboard only receives still captures.
+        let moved: URL
+        do {
+            moved = try destinationStore.moveToDestination(from: artifact.sourceURL, toDirectory: destinationDirectory)
+            logger.log("saved screen recording to \(moved.path)")
+        } catch {
+            logger.log("failed to move screen recording \(artifact.fileName): \(error.localizedDescription)")
+            return .skippedIncomplete(fileName: artifact.fileName)
+        }
+
+        if config.showFloatingPreview, let presenter = previewPresenter {
+            await presenter.showMediaPreview(
+                imageData: artifact.thumbnailPNGData,
+                fileURL: moved,
+                mediaKind: .video(durationSeconds: artifact.durationSeconds),
+                autoDismissSeconds: config.previewAutoDismissSeconds,
+                hoverDismissSeconds: config.previewHoverDismissSeconds,
+                onTrashRequested: makeTrashHandler(kindLabel: "screen recording")
+            )
+        }
+
+        return .movedRecording(fileName: artifact.fileName, destinationPath: moved.path)
+    }
+
+    private func makeTrashHandler(kindLabel: String) -> @Sendable (URL) -> Bool {
+        let store = destinationStore
+        let log = logger
+        return { url in
+            do {
+                try store.trashFile(at: url)
+                log.log("trashed \(kindLabel) from floating preview: \(url.lastPathComponent)")
+                return true
+            } catch {
+                log.log("failed to trash \(kindLabel) \(url.lastPathComponent): \(error.localizedDescription)")
+                return false
+            }
+        }
     }
 }

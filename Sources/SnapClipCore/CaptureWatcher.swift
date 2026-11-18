@@ -174,17 +174,20 @@ public final class CaptureWatcher: @unchecked Sendable {
         let ext = url.pathExtension.lowercased()
 
         if SupportedMedia.isVideo(extension: ext) {
-            guard await stabilityReader.waitUntilVideoStable(at: url) else {
+            let (readiness, artifact) = await stabilityReader.readCompleteVideo(at: url)
+            switch readiness {
+            case .inProgress:
+                // Recording is still active or flushing; retry without counting toward quarantine.
+                return true
+            case .incomplete:
                 return handleIncompleteCandidate(url: url)
+            case .ready:
+                clearFailureCount(for: url.path)
+                if let artifact {
+                    _ = await pipeline.runVideoPipeline(artifact, destinationDirectory: destinationDir)
+                }
+                return false
             }
-            clearFailureCount(for: url.path)
-            do {
-                let moved = try destinationStore.moveToDestination(from: url, toDirectory: destinationDir)
-                logger.log("saved screen recording to \(moved.path)")
-            } catch {
-                logger.log("failed to move screen recording \(name): \(error.localizedDescription)")
-            }
-            return false
         }
 
         guard let artifact = await stabilityReader.readCompleteImage(at: url) else {
@@ -269,9 +272,25 @@ public final class CaptureWatcher: @unchecked Sendable {
     }
 
     private func logConfigurationWarnings(expectedStagingPath: String) {
-        let currentLocation = defaultsStore.string(forKey: "location-screenshot") ?? defaultsStore.string(forKey: "location")
-        if let currentLocation, currentLocation != expectedStagingPath {
-            logger.log("warning: com.apple.screencapture points to '\(currentLocation)' instead of '\(expectedStagingPath)'; run 'snapclip install' to re-sync")
+        let currentScreenshotLocation = defaultsStore.string(forKey: "location-screenshot") ?? defaultsStore.string(forKey: "location")
+        if let currentScreenshotLocation, currentScreenshotLocation != expectedStagingPath {
+            logger.log("warning: com.apple.screencapture location-screenshot points to '\(currentScreenshotLocation)' instead of '\(expectedStagingPath)'; run 'snapclip install' to re-sync")
+        }
+
+        if config.watchScreenRecordings {
+            let currentRecordingLocation = defaultsStore.string(forKey: "location-screenrecording") ?? currentScreenshotLocation
+            if let currentRecordingLocation, currentRecordingLocation != expectedStagingPath {
+                logger.log("warning: com.apple.screencapture location-screenrecording points to '\(currentRecordingLocation)' instead of '\(expectedStagingPath)'; run 'snapclip install' to route Cmd+Shift+5 recordings through SnapClip")
+            }
+        }
+
+        if defaultsStore.object(forKey: "show-thumbnail") != nil && defaultsStore.bool(forKey: "show-thumbnail") {
+            logger.log("warning: com.apple.screencapture show-thumbnail is enabled; run 'snapclip install' to restore instant flush and floating preview")
+        }
+
+        let screenshotTarget = defaultsStore.string(forKey: "target-screenshot") ?? defaultsStore.string(forKey: "target") ?? "file"
+        if screenshotTarget != "file" {
+            logger.log("warning: com.apple.screencapture target-screenshot is '\(screenshotTarget)' instead of 'file'; run 'snapclip install' to restore file + preview capture")
         }
     }
 }

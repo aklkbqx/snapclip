@@ -15,6 +15,13 @@ snapclip doctor    # check that everything is in place
 brew install aklkbqx/snapclip/snapclip
 ```
 
+To upgrade an existing installation and refresh `com.apple.screencapture` defaults (such as routing screen recordings after `0.1.0`) while keeping your backup intact:
+
+```sh
+brew upgrade snapclip
+snapclip install
+```
+
 ## Release archive
 
 Download `snapclip_<version>_darwin_universal.tar.gz` and `SHA256SUMS` from [GitHub Releases](https://github.com/aklkbqx/snapclip/releases/latest), check the archive, and put `snapclip` on your `PATH`:

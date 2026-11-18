@@ -1,11 +1,13 @@
 import AppKit
 import Foundation
+import SnapClipCore
 
 /// Interactive floating preview view supporting click-to-open, drag-to-drop, swipe/right-click dismiss, and hover quick actions.
 @MainActor
 final class ThumbnailPreviewView: NSView, NSDraggingSource {
     private let image: NSImage
     private let fileURL: URL?
+    private let mediaKind: PreviewMediaKind
     private let onClick: () -> Void
     private let onDismiss: () -> Void
     private let onTrash: (() -> Void)?
@@ -22,6 +24,7 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         frame: NSRect,
         image: NSImage,
         fileURL: URL?,
+        mediaKind: PreviewMediaKind = .image,
         onClick: @escaping () -> Void,
         onDismiss: @escaping () -> Void,
         onTrash: (() -> Void)?,
@@ -29,6 +32,7 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     ) {
         self.image = image
         self.fileURL = fileURL
+        self.mediaKind = mediaKind
         self.onClick = onClick
         self.onDismiss = onDismiss
         self.onTrash = onTrash
@@ -42,9 +46,14 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
         layer?.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 0.94).cgColor
 
-        toolTip = fileURL != nil
-            ? "Click to open in Preview, drag to another app, right-click to dismiss"
-            : "Drag to another app, right-click to dismiss"
+        switch (mediaKind, fileURL) {
+        case (.video, .some):
+            toolTip = "Click to open recording, drag to another app, right-click to dismiss"
+        case (.image, .some):
+            toolTip = "Click to open in Preview, drag to another app, right-click to dismiss"
+        default:
+            toolTip = "Drag to another app, right-click to dismiss"
+        }
 
         setupActionButtons()
     }
@@ -73,9 +82,14 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         closeButton = closeBtn
 
         if fileURL != nil, onTrash != nil {
+            let trashLabel: String
+            switch mediaKind {
+            case .video: trashLabel = "Move recording to Trash"
+            case .image: trashLabel = "Move screenshot to Trash"
+            }
             let trashBtn = makeActionButton(
                 symbolName: "trash",
-                accessibilityLabel: "Move screenshot to Trash",
+                accessibilityLabel: trashLabel,
                 action: #selector(handleTrashPressed)
             )
             trashBtn.frame = NSRect(
@@ -204,11 +218,58 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         }
         NSGraphicsContext.restoreGraphicsState()
 
-        drawCopiedBadge()
+        if case .video = mediaKind {
+            drawVideoPlayOverlay(in: insetBounds)
+        }
+        drawStatusBadge()
     }
 
-    private func drawCopiedBadge() {
-        let badgeText = "Copied" as NSString
+    private func drawVideoPlayOverlay(in rect: NSRect) {
+        let circleSize: CGFloat = 28
+        let rawCircleRect = NSRect(
+            x: rect.midX - circleSize / 2,
+            y: rect.midY - circleSize / 2,
+            width: circleSize,
+            height: circleSize
+        )
+        let circleRect = backingAlignedRect(rawCircleRect, options: .alignAllEdgesNearest)
+        let circlePath = NSBezierPath(ovalIn: circleRect)
+        NSColor(calibratedWhite: 0.05, alpha: 0.72).setFill()
+        circlePath.fill()
+        NSColor.white.withAlphaComponent(0.65).setStroke()
+        circlePath.lineWidth = 1.0
+        circlePath.stroke()
+
+        if let sym = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Play") {
+            let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+                .applying(.init(paletteColors: [.white]))
+            let styled = sym.withSymbolConfiguration(config) ?? sym
+            let symSize = styled.size
+            let rawIconRect = NSRect(
+                x: circleRect.midX - symSize.width / 2 + 1,
+                y: circleRect.midY - symSize.height / 2,
+                width: symSize.width,
+                height: symSize.height
+            )
+            let iconRect = backingAlignedRect(rawIconRect, options: .alignAllEdgesNearest)
+            styled.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 0.95)
+        }
+    }
+
+    private func drawStatusBadge() {
+        let badgeString: String
+        switch mediaKind {
+        case .image:
+            badgeString = "Copied"
+        case .video(let duration):
+            if let duration, duration > 0 {
+                let totalSeconds = max(1, Int(duration.rounded()))
+                badgeString = String(format: "Saved · %d:%02d", totalSeconds / 60, totalSeconds % 60)
+            } else {
+                badgeString = "Saved"
+            }
+        }
+        let badgeText = badgeString as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: NSColor.white

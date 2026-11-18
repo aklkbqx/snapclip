@@ -63,7 +63,7 @@ All options and commands: [docs/reference.md](docs/reference.md).
 SnapClip does not record the screen or watch the keyboard. `snapclip install` points macOS's own screenshots at a private folder, and SnapClip copies and moves each finished file from there. Details: [docs/how-it-works.md](docs/how-it-works.md).
 
 **Does it work with screen recordings and non-English macOS?**
-Yes. Recordings are moved to the same folder (the clipboard is left alone), and files are matched by type, not by an English name.
+Yes. Finished `Cmd+Shift+5` recordings move to the same folder with their own corner preview card (the clipboard is left alone), and files are matched by type, not by an English name.
 
 **Does it send anything over the network?**
 No. No network connections and no telemetry. See [SECURITY.md](SECURITY.md).

@@ -213,9 +213,10 @@ public struct SystemDefaultsManager: Sendable {
             createdBackup = true
         }
 
+        let videoLocation = config.watchScreenRecordings ? stagingDir.path : destDir.path
         store.set(stagingDir.path, forKey: "location")
         store.set(stagingDir.path, forKey: "location-screenshot")
-        store.set(destDir.path, forKey: "location-screenrecording")
+        store.set(videoLocation, forKey: "location-screenrecording")
         store.set(false, forKey: "show-thumbnail")
         store.set("file", forKey: "target")
         store.set("file", forKey: "target-screenshot")
@@ -286,8 +287,13 @@ public struct SystemDefaultsManager: Sendable {
 
         let configuredLocation = store.string(forKey: "location-screenshot") ?? store.string(forKey: "location")
         let locationOK = configuredLocation == stagingDir.path
+        let expectedRecordingLocation = config.watchScreenRecordings ? stagingDir.path : destDir.path
+        let configuredRecordingLocation = store.string(forKey: "location-screenrecording") ?? configuredLocation
+        let recordingLocationOK = configuredRecordingLocation == expectedRecordingLocation
         let thumbnailDisabled = store.object(forKey: "show-thumbnail") != nil && !store.bool(forKey: "show-thumbnail")
-        let targetOK = (store.string(forKey: "target-screenshot") ?? store.string(forKey: "target") ?? "file") == "file"
+        let screenshotTarget = store.string(forKey: "target-screenshot") ?? store.string(forKey: "target") ?? "file"
+        let recordingTarget = store.string(forKey: "target-screenrecording") ?? store.string(forKey: "target") ?? "file"
+        let targetOK = screenshotTarget == "file" && (!config.watchScreenRecordings || recordingTarget == "file")
         let binaryExists = fm.isExecutableFile(atPath: binaryPath)
 
         var checks: [DiagnosticCheck] = [
@@ -310,6 +316,11 @@ public struct SystemDefaultsManager: Sendable {
                 name: "screencapture_location",
                 ok: locationOK,
                 detail: locationOK ? stagingDir.path : "Expected \(stagingDir.path), got \(configuredLocation ?? "<unset>")"
+            ),
+            DiagnosticCheck(
+                name: "screencapture_recording_location",
+                ok: recordingLocationOK,
+                detail: recordingLocationOK ? expectedRecordingLocation : "Expected \(expectedRecordingLocation), got \(configuredRecordingLocation ?? "<unset>") (run 'snapclip install')"
             ),
             DiagnosticCheck(
                 name: "screencapture_thumbnail_delay",

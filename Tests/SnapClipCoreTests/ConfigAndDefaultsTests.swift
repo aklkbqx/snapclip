@@ -81,6 +81,7 @@ struct ConfigAndDefaultsTests {
         #expect(firstBackup == true)
         #expect(secondBackup == false)
         #expect(store.string(forKey: "location-screenshot") == config.stagingURL(homeDirectory: home.path).path)
+        #expect(store.string(forKey: "location-screenrecording") == config.stagingURL(homeDirectory: home.path).path)
         #expect(store.bool(forKey: "show-thumbnail") == false)
         #expect(store.string(forKey: "target-screenshot") == "file")
         #expect(store.string(forKey: "target-screenrecording") == "file")
@@ -117,6 +118,7 @@ struct ConfigAndDefaultsTests {
 
         // Drift location and leave a file in staging
         store.set("/tmp/elsewhere", forKey: "location-screenshot")
+        store.set("/tmp/elsewhere-video", forKey: "location-screenrecording")
         try Data("x".utf8).write(to: config.stagingURL(homeDirectory: home.path).appendingPathComponent("stuck.png"))
 
         let unhealthy = manager.buildDoctorReport(
@@ -129,7 +131,22 @@ struct ConfigAndDefaultsTests {
         #expect(unhealthy.healthy == false)
         #expect(unhealthy.stuckFilesInStaging == 1)
         #expect(unhealthy.checks.first(where: { $0.name == "screencapture_location" })?.ok == false)
+        #expect(unhealthy.checks.first(where: { $0.name == "screencapture_recording_location" })?.ok == false)
         #expect(unhealthy.checks.first(where: { $0.name == "conflicting_agent" })?.ok == false)
+    }
+
+    @Test("Install respects watchScreenRecordings=false by sending recordings directly to destination")
+    func installWithWatchRecordingsDisabled() throws {
+        let home = try TestFixtures.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let store = InMemoryDefaultsStore()
+        let config = SnapClipConfig(watchScreenRecordings: false)
+        let manager = SystemDefaultsManager(store: store, homeDirectory: home.path)
+        try manager.applyInstallDefaults(config: config)
+
+        #expect(store.string(forKey: "location-screenshot") == config.stagingURL(homeDirectory: home.path).path)
+        #expect(store.string(forKey: "location-screenrecording") == config.destinationURL(homeDirectory: home.path).path)
     }
 
     @Test("Executable resolver handles PATH invocations and Homebrew opt symlinks cleanly")

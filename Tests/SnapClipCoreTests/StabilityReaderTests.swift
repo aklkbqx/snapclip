@@ -95,4 +95,53 @@ struct StabilityReaderTests {
         let stable = await reader.waitUntilVideoStable(at: mov, maxAttempts: 10)
         #expect(stable == true)
     }
+
+    @Test("Finalized MOV returns ready video artifact with thumbnail and duration")
+    func finalizedMOVProducesThumbnailArtifact() async throws {
+        let dir = try TestFixtures.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mov = dir.appendingPathComponent("Screen Recording.mov")
+        try await TestFixtures.makeValidMOVFile(at: mov, width: 80, height: 64, durationSeconds: 0.4)
+
+        let reader = StabilityReader(
+            retryDelaysMilliseconds: [10],
+            stabilityProbeMilliseconds: 10,
+            videoProbeMilliseconds: 10,
+            activeVideoGraceSeconds: 0,
+            isActiveCaptureRunning: { false }
+        )
+        let result = await reader.readCompleteVideo(at: mov)
+
+        #expect(result.readiness == .ready)
+        #expect(result.artifact?.fileName == "Screen Recording.mov")
+        #expect((result.artifact?.durationSeconds ?? 0) > 0.1)
+        let thumbData = try #require(result.artifact?.thumbnailPNGData)
+        let dims = StabilityReader.decodePixelDimensions(from: thumbData)
+        #expect(dims?.width == 80)
+        #expect(dims?.height == 64)
+    }
+
+    @Test("Unfinalized MOV stays inProgress while capture active or growing, then becomes incomplete when stale")
+    func unfinalizedMOVClassification() async throws {
+        let dir = try TestFixtures.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mov = dir.appendingPathComponent("in-progress.mov")
+        try Data(repeating: 0x00, count: 64).write(to: mov)
+
+        let activeReader = StabilityReader(
+            videoProbeMilliseconds: 10,
+            activeVideoGraceSeconds: 0,
+            isActiveCaptureRunning: { true }
+        )
+        #expect(await activeReader.checkVideoReadiness(at: mov) == .inProgress)
+
+        let staleReader = StabilityReader(
+            videoProbeMilliseconds: 10,
+            activeVideoGraceSeconds: 0,
+            isActiveCaptureRunning: { false }
+        )
+        #expect(await staleReader.checkVideoReadiness(at: mov) == .incomplete)
+    }
 }

@@ -1,6 +1,17 @@
+import AVFoundation
+import CoreGraphics
+import CoreMedia
+import Darwin
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+
+/// Readiness classification for a staged screen recording file.
+public enum VideoReadiness: Equatable, Sendable {
+    case ready
+    case inProgress
+    case incomplete
+}
 
 /// Validates that newly discovered media files have finished flushing to disk without blocking the main thread.
 public struct StabilityReader: Sendable {
@@ -9,13 +20,22 @@ public struct StabilityReader: Sendable {
 
     public let retryDelaysNanoseconds: [UInt64]
     public let stabilityProbeNanoseconds: UInt64
+    public let videoProbeNanoseconds: UInt64
+    public let activeVideoGraceSeconds: TimeInterval
+    private let isActiveCaptureRunning: @Sendable () -> Bool
 
     public init(
         retryDelaysMilliseconds: [UInt64] = [20, 30, 50, 75, 100, 150, 250, 400, 600, 800, 1_000, 1_000, 1_000, 1_000],
-        stabilityProbeMilliseconds: UInt64 = 40
+        stabilityProbeMilliseconds: UInt64 = 40,
+        videoProbeMilliseconds: UInt64 = 150,
+        activeVideoGraceSeconds: TimeInterval = 5.0,
+        isActiveCaptureRunning: @escaping @Sendable () -> Bool = { StabilityReader.defaultIsScreencaptureProcessRunning() }
     ) {
         self.retryDelaysNanoseconds = retryDelaysMilliseconds.map { $0 * 1_000_000 }
         self.stabilityProbeNanoseconds = stabilityProbeMilliseconds * 1_000_000
+        self.videoProbeNanoseconds = videoProbeMilliseconds * 1_000_000
+        self.activeVideoGraceSeconds = max(0, activeVideoGraceSeconds)
+        self.isActiveCaptureRunning = isActiveCaptureRunning
     }
 
     /// Reads an image once its format trailer / byte size has stabilized and ImageIO confirms valid pixel dimensions.
@@ -49,6 +69,59 @@ public struct StabilityReader: Sendable {
             try? await Task.sleep(nanoseconds: probeGap)
         }
         return false
+    }
+
+    /// Classifies whether a staged video is still actively recording, incomplete/corrupt, or finalized and ready.
+    public func readCompleteVideo(at url: URL) async -> (readiness: VideoReadiness, artifact: CapturedVideoArtifact?) {
+        let ext = url.pathExtension.lowercased()
+        guard SupportedMedia.isVideo(extension: ext),
+              FileManager.default.fileExists(atPath: url.path) else {
+            return (.incomplete, nil)
+        }
+
+        let contentType = SupportedMedia.contentType(forExtension: ext)
+        let inspection = await inspectPlayableVideo(at: url)
+
+        let sizeBefore = fileSize(at: url)
+        if videoProbeNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: videoProbeNanoseconds)
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return (.incomplete, nil)
+        }
+        let sizeAfter = fileSize(at: url)
+
+        if sizeAfter != sizeBefore {
+            return (.inProgress, nil)
+        }
+
+        if inspection.playable, sizeAfter > 0 {
+            let postStableInspection = await inspectPlayableVideo(at: url)
+            if postStableInspection.playable {
+                let thumbnailData = await extractThumbnailPNGData(
+                    at: url,
+                    durationSeconds: postStableInspection.durationSeconds
+                )
+                let artifact = CapturedVideoArtifact(
+                    sourceURL: url,
+                    contentType: contentType,
+                    thumbnailPNGData: thumbnailData,
+                    durationSeconds: postStableInspection.durationSeconds
+                )
+                return (.ready, artifact)
+            }
+        }
+
+        if isActiveCaptureRunning() || isRecentlyModified(at: url, within: activeVideoGraceSeconds) {
+            return (.inProgress, nil)
+        }
+
+        return (.incomplete, nil)
+    }
+
+    /// Evaluates video readiness without constructing a full preview artifact.
+    public func checkVideoReadiness(at url: URL) async -> VideoReadiness {
+        await readCompleteVideo(at: url).readiness
     }
 
     private func tryReadImageOnce(at url: URL, ext: String, contentType: UTType) async -> CapturedArtifact? {
@@ -108,5 +181,93 @@ public struct StabilityReader: Sendable {
             return -1
         }
         return num.int64Value
+    }
+
+    private func isRecentlyModified(at url: URL, within seconds: TimeInterval) -> Bool {
+        guard seconds > 0,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modified = attrs[.modificationDate] as? Date else {
+            return false
+        }
+        return Date().timeIntervalSince(modified) < seconds
+    }
+
+    private func inspectPlayableVideo(at url: URL) async -> (playable: Bool, durationSeconds: Double?) {
+        let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: false])
+        guard let playable = try? await asset.load(.isPlayable), playable else {
+            return (false, nil)
+        }
+        let tracks = (try? await asset.load(.tracks)) ?? []
+        guard !tracks.isEmpty else {
+            return (false, nil)
+        }
+        let duration = try? await asset.load(.duration)
+        let seconds = duration.map { CMTimeGetSeconds($0) }
+        let validDuration = (seconds != nil && seconds!.isFinite && seconds! > 0) ? seconds : nil
+        return (validDuration != nil, validDuration)
+    }
+
+    private func extractThumbnailPNGData(at url: URL, durationSeconds: Double?) async -> Data? {
+        let asset = AVURLAsset(url: url)
+        let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        guard !videoTracks.isEmpty else {
+            return nil
+        }
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 816, height: 592)
+
+        let targetSeconds: Double
+        if let durationSeconds, durationSeconds > 0 {
+            targetSeconds = min(0.2, durationSeconds * 0.1)
+        } else {
+            targetSeconds = 0
+        }
+        let targetTime = CMTime(seconds: targetSeconds, preferredTimescale: 600)
+
+        if let cgImage = try? await generator.image(at: targetTime).image {
+            return Self.encodePNG(cgImage: cgImage)
+        }
+        if targetTime != .zero, let fallbackImage = try? await generator.image(at: .zero).image {
+            return Self.encodePNG(cgImage: fallbackImage)
+        }
+        return nil
+    }
+
+    private static func encodePNG(cgImage: CGImage) -> Data? {
+        let output = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(dest, cgImage, nil)
+        guard CGImageDestinationFinalize(dest) else {
+            return nil
+        }
+        return output as Data
+    }
+
+    /// Detects whether macOS's `screencapture` CLI process is currently alive (e.g. interactive Cmd+Shift+5 recording).
+    public static func defaultIsScreencaptureProcessRunning() -> Bool {
+        let estimatedBytes = proc_listallpids(nil, 0)
+        guard estimatedBytes > 0 else { return false }
+
+        let capacity = max(Int(estimatedBytes) / MemoryLayout<pid_t>.size + 64, 512)
+        var pids = [pid_t](repeating: 0, count: capacity)
+        let writtenBytes = proc_listallpids(&pids, Int32(capacity * MemoryLayout<pid_t>.size))
+        guard writtenBytes > 0 else { return false }
+
+        let count = Int(writtenBytes) / MemoryLayout<pid_t>.size
+        for index in 0..<count where pids[index] > 0 {
+            var nameBuffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+            let len = proc_name(pids[index], &nameBuffer, UInt32(nameBuffer.count))
+            guard len > 0 else { continue }
+            let end = nameBuffer.firstIndex(of: 0) ?? nameBuffer.count
+            let processName = String(decoding: nameBuffer[..<end].map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            if processName == "screencapture" {
+                return true
+            }
+        }
+        return false
     }
 }

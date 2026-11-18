@@ -65,6 +65,39 @@ public struct CapturedArtifact: Sendable {
     }
 }
 
+/// Visual presentation mode for the floating corner preview card.
+public enum PreviewMediaKind: Equatable, Sendable {
+    case image
+    case video(durationSeconds: Double?)
+}
+
+/// Immutable representation of a finalized screen recording ready for placement and preview presentation.
+public struct CapturedVideoArtifact: Sendable {
+    public let sourceURL: URL
+    public let fileName: String
+    public let fileExtension: String
+    public let contentType: UTType
+    public let thumbnailPNGData: Data?
+    public let durationSeconds: Double?
+    public let capturedAt: Date
+
+    public init(
+        sourceURL: URL,
+        contentType: UTType,
+        thumbnailPNGData: Data?,
+        durationSeconds: Double?,
+        capturedAt: Date = Date()
+    ) {
+        self.sourceURL = sourceURL
+        self.fileName = sourceURL.lastPathComponent
+        self.fileExtension = sourceURL.pathExtension.lowercased()
+        self.contentType = contentType
+        self.thumbnailPNGData = thumbnailPNGData
+        self.durationSeconds = durationSeconds
+        self.capturedAt = capturedAt
+    }
+}
+
 /// Result recorded after processing a single file in staging.
 public enum CaptureProcessingResult: Equatable, Sendable {
     case processedImage(fileName: String, copiedToClipboard: Bool, destinationPath: String?)

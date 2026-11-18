@@ -11,8 +11,8 @@ SnapClip does not capture your screen or listen to the keyboard. macOS's own `sc
 ## What `snapclip install` changes
 
 - Backs up your current `com.apple.screencapture` settings to `~/.local/state/snapclip/backup-defaults.json`.
-- Sets `show-thumbnail = 0`. With the stock thumbnail on, macOS holds the file back until the thumbnail goes away (about 5 seconds). With it off, the file is written right away and SnapClip shows its own preview card instead.
-- Points screenshots at a staging folder (`~/.local/state/snapclip/staging`).
+- Sets `show-thumbnail = 0`. With the stock thumbnail on, macOS holds the file back until the thumbnail goes away (about 5 seconds). With it off, the file is written right away and SnapClip shows its own preview card for both screenshots and finished screen recordings.
+- Points screenshots (and screen recordings when `watchScreenRecordings` is enabled) at a staging folder (`~/.local/state/snapclip/staging`).
 - Loads a `LaunchAgent` (`com.snapclip.agent`) that runs `snapclip run`.
 
 `snapclip uninstall` reverses all of this.
@@ -22,9 +22,9 @@ SnapClip does not capture your screen or listen to the keyboard. macOS's own `sc
 `SnapClipCore` watches the staging folder with kernel vnode notifications (`O_EVTONLY`). For each new file it:
 
 1. Sorts pending captures oldest-first, so quick bursts keep their order.
-2. Waits until the image is complete: a valid image trailer and a byte count that stops changing (checked with `ImageIO`).
-3. Writes PNG plus LZW-compressed TIFF onto a single `NSPasteboardItem`.
-4. Moves the file into `destinationDirectory`, adding a number if the name is taken.
+2. Waits until the media is complete: images check format trailers, byte stability, and `ImageIO` pixel dimensions; screen recordings wait without blocking screenshots until `AVFoundation` reports a finalized playable asset and size stops changing.
+3. For screenshots, writes PNG plus LZW-compressed TIFF onto a single `NSPasteboardItem`. (Screen recordings leave the clipboard untouched.)
+4. Moves the file into `destinationDirectory` (adding a number if the name is taken) and displays the bottom-right corner preview card.
 
 Files are matched by extension (`png`, `jpg`, `jpeg`, `heic`, `tiff`, `tif`, `webp`, plus `mov` / `mp4` when `watchScreenRecordings` is on), not by an English `Screenshot` prefix, so localized macOS file names work.
 
