@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 (2026-11-18)
+
+- Copy finalized `Cmd+Shift+5` screen recordings (`.mov` / `.mp4`) to the macOS clipboard as a native file URL (`public.file-url`) after moving them to `destinationDirectory`, enabling direct `Cmd+V` pasting into Finder, chat apps, and browsers.
+- Add `copyScreenRecordingsToClipboard` option to `SnapClipConfig` (defaults to `true`) and show a `Copied · m:ss` badge on the video corner preview card when copied.
+- Wait for `launchd` teardown and retry `launchctl bootstrap` cleanly in `snapclip install` to avoid transient I/O errors during upgrades.
+
 ## 0.2.0 (2026-11-18)
 
 - Route `Cmd+Shift+5` screen recordings (`location-screenrecording`) through staging when `watchScreenRecordings` is enabled so recordings appear in the corner preview card instead of finishing silently when macOS `show-thumbnail` is disabled.

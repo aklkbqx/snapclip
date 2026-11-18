@@ -13,6 +13,7 @@ public struct SnapClipConfig: Codable, Equatable, Sendable {
     public var includeTiffOnPasteboard: Bool
     public var maxLogSizeBytes: Int
     public var watchScreenRecordings: Bool
+    public var copyScreenRecordingsToClipboard: Bool
 
     public static let defaultConfigPath = "~/.config/snapclip/config.json"
 
@@ -27,7 +28,8 @@ public struct SnapClipConfig: Codable, Equatable, Sendable {
         previewHoverDismissSeconds: Double = 2.5,
         includeTiffOnPasteboard: Bool = true,
         maxLogSizeBytes: Int = 1_048_576,
-        watchScreenRecordings: Bool = true
+        watchScreenRecordings: Bool = true,
+        copyScreenRecordingsToClipboard: Bool = true
     ) {
         self.stagingDirectory = stagingDirectory
         self.destinationDirectory = destinationDirectory
@@ -40,6 +42,7 @@ public struct SnapClipConfig: Codable, Equatable, Sendable {
         self.includeTiffOnPasteboard = includeTiffOnPasteboard
         self.maxLogSizeBytes = maxLogSizeBytes
         self.watchScreenRecordings = watchScreenRecordings
+        self.copyScreenRecordingsToClipboard = copyScreenRecordingsToClipboard
     }
 
     /// Loads config from `path` (if present), filling any omitted keys with defaults.
@@ -66,7 +69,8 @@ public struct SnapClipConfig: Codable, Equatable, Sendable {
             previewHoverDismissSeconds: max(0.5, partial.previewHoverDismissSeconds ?? defaults.previewHoverDismissSeconds),
             includeTiffOnPasteboard: partial.includeTiffOnPasteboard ?? defaults.includeTiffOnPasteboard,
             maxLogSizeBytes: max(16_384, partial.maxLogSizeBytes ?? defaults.maxLogSizeBytes),
-            watchScreenRecordings: partial.watchScreenRecordings ?? defaults.watchScreenRecordings
+            watchScreenRecordings: partial.watchScreenRecordings ?? defaults.watchScreenRecordings,
+            copyScreenRecordingsToClipboard: partial.copyScreenRecordingsToClipboard ?? defaults.copyScreenRecordingsToClipboard
         )
     }
 
@@ -126,4 +130,5 @@ private struct PartialConfig: Codable {
     var includeTiffOnPasteboard: Bool?
     var maxLogSizeBytes: Int?
     var watchScreenRecordings: Bool?
+    var copyScreenRecordingsToClipboard: Bool?
 }

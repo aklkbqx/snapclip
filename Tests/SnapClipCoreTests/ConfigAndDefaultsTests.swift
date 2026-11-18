@@ -59,6 +59,7 @@ struct ConfigAndDefaultsTests {
         #expect(loaded.keepFile == false)
         #expect(loaded.previewAutoDismissSeconds == 3.0)
         #expect(loaded.showFloatingPreview == true)
+        #expect(loaded.copyScreenRecordingsToClipboard == true)
         #expect(loaded.destinationURL(homeDirectory: dir.path).path == dir.appendingPathComponent("Desktop").path)
     }
 

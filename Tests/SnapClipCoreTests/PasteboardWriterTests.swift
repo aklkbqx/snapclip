@@ -61,4 +61,28 @@ struct PasteboardWriterTests {
         #expect(cache["b"] == "2")
         #expect(cache["c"] == "3")
     }
+
+    @Test("Writes file URL to an isolated pasteboard for video clipboard paste")
+    func writesFileURLToIsolatedPasteboard() async throws {
+        let dir = try TestFixtures.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mov = dir.appendingPathComponent("Screen Recording.mov")
+        try await TestFixtures.makeValidMOVFile(at: mov, durationSeconds: 0.2)
+
+        let (wrote, readPaths) = await MainActor.run {
+            let pb = NSPasteboard.withUniqueName()
+            defer { pb.releaseGlobally() }
+            let ok = SystemPasteboardWriter.writeFileURL(mov, to: pb)
+            let objs = pb.readObjects(forClasses: [NSURL.self]) as? [URL] ?? []
+            return (ok, objs.map { $0.standardizedFileURL.path })
+        }
+
+        #expect(wrote == true)
+        #expect(readPaths == [mov.standardizedFileURL.path])
+
+        let missing = dir.appendingPathComponent("missing.mov")
+        let missingResult = await SystemPasteboardWriter().writeFileURL(missing)
+        #expect(missingResult == false)
+    }
 }

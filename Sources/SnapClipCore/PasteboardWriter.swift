@@ -3,9 +3,14 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Writes encoded image payloads to the system clipboard (or a test double).
+/// Writes encoded image payloads and file URLs to the system clipboard (or a test double).
 public protocol PasteboardWriting: Sendable {
     func writeImage(data: Data, contentType: UTType, includeTiff: Bool) async -> Bool
+    func writeFileURL(_ url: URL) async -> Bool
+}
+
+public extension PasteboardWriting {
+    func writeFileURL(_ url: URL) async -> Bool { false }
 }
 
 /// Encoded representations ready to attach atomically to an `NSPasteboardItem`.
@@ -90,5 +95,18 @@ public final class SystemPasteboardWriter: PasteboardWriting {
             pb.clearContents()
             return pb.writeObjects([item])
         }
+    }
+
+    public func writeFileURL(_ url: URL) async -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        return await MainActor.run {
+            Self.writeFileURL(url, to: .general)
+        }
+    }
+
+    @MainActor
+    static func writeFileURL(_ url: URL, to pasteboard: NSPasteboard) -> Bool {
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([url as NSURL])
     }
 }

@@ -68,7 +68,7 @@ public struct CapturedArtifact: Sendable {
 /// Visual presentation mode for the floating corner preview card.
 public enum PreviewMediaKind: Equatable, Sendable {
     case image
-    case video(durationSeconds: Double?)
+    case video(durationSeconds: Double?, copiedToClipboard: Bool = false)
 }
 
 /// Immutable representation of a finalized screen recording ready for placement and preview presentation.

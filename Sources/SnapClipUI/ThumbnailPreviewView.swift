@@ -261,12 +261,13 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         switch mediaKind {
         case .image:
             badgeString = "Copied"
-        case .video(let duration):
+        case .video(let duration, let copiedToClipboard):
+            let statusWord = copiedToClipboard ? "Copied" : "Saved"
             if let duration, duration > 0 {
                 let totalSeconds = max(1, Int(duration.rounded()))
-                badgeString = String(format: "Saved · %d:%02d", totalSeconds / 60, totalSeconds % 60)
+                badgeString = String(format: "%@ · %d:%02d", statusWord, totalSeconds / 60, totalSeconds % 60)
             } else {
-                badgeString = "Saved"
+                badgeString = statusWord
             }
         }
         let badgeText = badgeString as NSString

@@ -23,8 +23,8 @@ SnapClip does not capture your screen or listen to the keyboard. macOS's own `sc
 
 1. Sorts pending captures oldest-first, so quick bursts keep their order.
 2. Waits until the media is complete: images check format trailers, byte stability, and `ImageIO` pixel dimensions; screen recordings wait without blocking screenshots until `AVFoundation` reports a finalized playable asset and size stops changing.
-3. For screenshots, writes PNG plus LZW-compressed TIFF onto a single `NSPasteboardItem`. (Screen recordings leave the clipboard untouched.)
-4. Moves the file into `destinationDirectory` (adding a number if the name is taken) and displays the bottom-right corner preview card.
+3. For screenshots, writes PNG plus LZW-compressed TIFF onto a single `NSPasteboardItem`.
+4. Moves the file into `destinationDirectory` (adding a number if the name is taken), copies finalized screen recording file URLs to the clipboard (`public.file-url`) when `copyScreenRecordingsToClipboard` is on, and displays the bottom-right corner preview card.
 
 Files are matched by extension (`png`, `jpg`, `jpeg`, `heic`, `tiff`, `tif`, `webp`, plus `mov` / `mp4` when `watchScreenRecordings` is on), not by an English `Screenshot` prefix, so localized macOS file names work.
 

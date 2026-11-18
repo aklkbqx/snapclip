@@ -6,10 +6,18 @@ import UniformTypeIdentifiers
 final class MockPasteboardWriter: PasteboardWriting, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var writes: [(data: Data, contentType: UTType, includeTiff: Bool)] = []
+    private(set) var fileURLs: [URL] = []
 
     func writeImage(data: Data, contentType: UTType, includeTiff: Bool) async -> Bool {
         lock.withLock {
             writes.append((data, contentType, includeTiff))
+        }
+        return true
+    }
+
+    func writeFileURL(_ url: URL) async -> Bool {
+        lock.withLock {
+            fileURLs.append(url)
         }
         return true
     }
@@ -327,7 +335,7 @@ struct PipelineIntegrationTests {
         #expect(pasteboard.writes.isEmpty)
     }
 
-    @Test("CaptureWatcher moves finalized screen recording, shows video preview, and leaves pasteboard untouched")
+    @Test("CaptureWatcher moves finalized screen recording, copies file URL to clipboard, and shows video preview")
     func watcherProcessesFinalizedScreenRecordingWithPreview() async throws {
         let home = try TestFixtures.makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: home) }
@@ -385,13 +393,55 @@ struct PipelineIntegrationTests {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
+        let movedPath = destURL.appendingPathComponent("Screen Recording Test.mov").path
         #expect(pasteboard.writes.isEmpty)
+        #expect(pasteboard.fileURLs.map(\.path) == [movedPath])
         #expect(!FileManager.default.fileExists(atPath: movURL.path))
-        #expect(FileManager.default.fileExists(atPath: destURL.appendingPathComponent("Screen Recording Test.mov").path))
+        #expect(FileManager.default.fileExists(atPath: movedPath))
         #expect(preview.shownEntries.count == 1)
         #expect(preview.shownEntries.first?.hasImageData == true)
-        if case .video(let duration) = preview.shownEntries.first?.kind {
+        if case .video(let duration, let copiedToClipboard) = preview.shownEntries.first?.kind {
             #expect((duration ?? 0) > 0.1)
+            #expect(copiedToClipboard == true)
+        } else {
+            Issue.record("Expected video preview media kind")
+        }
+    }
+
+    @Test("runVideoPipeline leaves clipboard untouched when copyScreenRecordingsToClipboard is false")
+    func videoPipelineRespectsClipboardOptOut() async throws {
+        let staging = try TestFixtures.makeTempDirectory()
+        let dest = try TestFixtures.makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: staging)
+            try? FileManager.default.removeItem(at: dest)
+        }
+
+        let movURL = staging.appendingPathComponent("Screen Recording Quiet.mov")
+        try await TestFixtures.makeValidMOVFile(at: movURL, durationSeconds: 0.2)
+
+        let artifact = CapturedVideoArtifact(
+            sourceURL: movURL,
+            contentType: .quickTimeMovie,
+            thumbnailPNGData: nil,
+            durationSeconds: 0.2
+        )
+
+        let pasteboard = MockPasteboardWriter()
+        let preview = MockPreviewPresenter()
+        let pipeline = SnapClipPipeline(
+            config: SnapClipConfig(copyScreenRecordingsToClipboard: false),
+            pasteboardWriter: pasteboard,
+            previewPresenter: preview,
+            logger: TestLogger()
+        )
+
+        let result = await pipeline.runVideoPipeline(artifact, destinationDirectory: dest)
+        let movedPath = dest.appendingPathComponent("Screen Recording Quiet.mov").path
+        #expect(result == .movedRecording(fileName: "Screen Recording Quiet.mov", destinationPath: movedPath))
+        #expect(pasteboard.fileURLs.isEmpty)
+        if case .video(_, let copiedToClipboard) = preview.shownEntries.first?.kind {
+            #expect(copiedToClipboard == false)
         } else {
             Issue.record("Expected video preview media kind")
         }

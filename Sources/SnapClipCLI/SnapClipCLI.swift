@@ -5,7 +5,7 @@ import SnapClipCore
 import SnapClipUI
 
 enum SnapClipVersion {
-    static let current = "0.2.0"
+    static let current = "0.3.0"
 }
 
 @main
@@ -384,21 +384,34 @@ struct SnapClipCLI {
         proc.standardError = Pipe()
         try? proc.run()
         proc.waitUntilExit()
+
+        // launchd can continue tearing down the service briefly after bootout exits.
+        for _ in 0..<30 where isLaunchAgentLoaded(label: label) {
+            usleep(50_000)
+        }
     }
 
     private static func bootstrapLaunchAgent(plistURL: URL) throws {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        proc.arguments = ["bootstrap", launchdDomain(), plistURL.path]
-        let errPipe = Pipe()
-        proc.standardOutput = Pipe()
-        proc.standardError = errPipe
-        try proc.run()
-        proc.waitUntilExit()
-        if proc.terminationStatus != 0 {
+        var lastError = ""
+        for attempt in 0..<4 {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            proc.arguments = ["bootstrap", launchdDomain(), plistURL.path]
+            let errPipe = Pipe()
+            proc.standardOutput = Pipe()
+            proc.standardError = errPipe
+            try proc.run()
+            proc.waitUntilExit()
+            if proc.terminationStatus == 0 {
+                return
+            }
             let errText = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            throw CLIError.launchdFailed(errText.trimmingCharacters(in: .whitespacesAndNewlines))
+            lastError = errText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if attempt < 3 {
+                usleep(250_000)
+            }
         }
+        throw CLIError.launchdFailed(lastError)
     }
 
     private static func refreshSystemUIServer() {

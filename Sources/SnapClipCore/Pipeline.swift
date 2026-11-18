@@ -155,12 +155,12 @@ public final class SnapClipPipeline: Sendable {
         )
     }
 
-    /// Moves a finalized screen recording to `destinationDirectory` without altering the clipboard and shows its corner preview.
+    /// Moves a finalized screen recording to `destinationDirectory`, copies its file URL to the clipboard when enabled, and shows its corner preview.
     public func runVideoPipeline(
         _ artifact: CapturedVideoArtifact,
         destinationDirectory: URL
     ) async -> CaptureProcessingResult {
-        // Screen recordings are always persisted to disk because the pasteboard only receives still captures.
+        // Screen recordings are always persisted to disk because clipboard file-URL paste references the saved file.
         let moved: URL
         do {
             moved = try destinationStore.moveToDestination(from: artifact.sourceURL, toDirectory: destinationDirectory)
@@ -170,11 +170,21 @@ public final class SnapClipPipeline: Sendable {
             return .skippedIncomplete(fileName: artifact.fileName)
         }
 
+        var copied = false
+        if config.copyScreenRecordingsToClipboard {
+            copied = await pasteboardWriter.writeFileURL(moved)
+            if copied {
+                logger.log("copied screen recording to clipboard: \(moved.lastPathComponent)")
+            } else {
+                logger.log("failed to write screen recording to clipboard: \(moved.lastPathComponent)")
+            }
+        }
+
         if config.showFloatingPreview, let presenter = previewPresenter {
             await presenter.showMediaPreview(
                 imageData: artifact.thumbnailPNGData,
                 fileURL: moved,
-                mediaKind: .video(durationSeconds: artifact.durationSeconds),
+                mediaKind: .video(durationSeconds: artifact.durationSeconds, copiedToClipboard: copied),
                 autoDismissSeconds: config.previewAutoDismissSeconds,
                 hoverDismissSeconds: config.previewHoverDismissSeconds,
                 onTrashRequested: makeTrashHandler(kindLabel: "screen recording")
