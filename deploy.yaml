@@ -1,0 +1,40 @@
+version: 1
+project: snapclip
+registry: ghcr.io/aklkbqx
+
+git:
+  requireClean: true
+  tagPromotion:
+    promoteLatest: true
+
+build:
+  builder: auto
+  cacheMode: min
+  platform: linux/amd64
+
+environments:
+  production:
+    host: private
+    registryMode: oci
+    minFreeDiskMb: 512
+    keepImages: 5
+
+services:
+  site:
+    preset: static-nginx
+    image: snapclip-site
+    dockerfile: site/Dockerfile
+    context: site
+    watchPaths:
+      - "site/**"
+    composeDir: /root/apps/akalakkruaboon@gmail.com/aklkbqx.com/snapclip
+    composeProject: snapclip-site
+    composeService: snapclip-site
+    imageVar: SITE_IMAGE
+    minFreeMb: 128
+    internalProbe:
+      port: 80
+      path: /healthz
+    verify:
+      url: https://snapclip.aklkbqx.com/healthz
+      consecutiveOk: 3
